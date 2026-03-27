@@ -249,8 +249,9 @@ async def _handle_add_rule(ws: WebSocket, payload: dict[str, Any]) -> None:
     if not text:
         return
 
+    severity = payload.get("severity", "medium")
     zone_names = [z.name for z in zones]
-    parsed = await rule_parser.parse(text, zone_names)
+    parsed = await rule_parser.parse(text, zone_names, severity=severity)
     if parsed:
         rules.append(parsed)
         await broadcast(WSMessage(

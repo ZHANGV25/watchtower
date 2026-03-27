@@ -80,8 +80,8 @@ export function useWatchTower() {
     }
   }, [])
 
-  const addRule = useCallback((text: string) => {
-    socket.send("add_rule", { text })
+  const addRule = useCallback((text: string, severity: string = "medium") => {
+    socket.send("add_rule", { text, severity })
   }, [])
 
   const toggleRule = useCallback((id: string) => {

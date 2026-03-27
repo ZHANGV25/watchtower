@@ -60,8 +60,9 @@ Each condition: {{"type": "<condition_type>", "params": {{...}}}}
 - If the user mentions "adult", use person_size with size "large"
 - If the user mentions a time, use time_window
 - If the user says "for more than X seconds/minutes", add a duration condition
-- Severity: low for informational, medium for notable, high for concerning, critical for immediate danger
-- If you cannot map the request to available conditions, approximate and reflect that in the name"""
+- If the user mentions "falling", "fell", or "fall down", use person_pose with pose "lying" (there is no separate falling detector)
+- If you cannot map the request to available conditions, approximate and reflect that in the name
+- Always set severity to "medium" (the user will override it manually)"""
 
 
 class RuleParser:
@@ -70,7 +71,7 @@ class RuleParser:
             aws_region=os.getenv("AWS_REGION", "us-east-1"),
         )
 
-    async def parse(self, text: str, zone_names: list[str]) -> Rule | None:
+    async def parse(self, text: str, zone_names: list[str], severity: str = "medium") -> Rule | None:
         zones_str = ", ".join(zone_names) if zone_names else "(no zones defined yet)"
 
         try:
@@ -99,7 +100,7 @@ class RuleParser:
                 name=parsed.get("name", "Unnamed rule"),
                 natural_language=text,
                 conditions=conditions,
-                severity=parsed.get("severity", "medium"),
+                severity=severity,
             )
 
         except Exception as e:

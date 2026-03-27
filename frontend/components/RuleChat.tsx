@@ -6,8 +6,11 @@ import { Button } from "@/components/ui/button"
 import type { Rule } from "@/lib/types"
 import { SEVERITY_COLORS } from "@/lib/types"
 
+const SEVERITIES = ["low", "medium", "high", "critical"] as const
+type Severity = (typeof SEVERITIES)[number]
+
 interface RuleChatProps {
-  onAddRule: (text: string) => void
+  onAddRule: (text: string, severity: string) => void
   lastAddedRule: Rule | null
 }
 
@@ -19,6 +22,7 @@ type FeedbackState =
 
 export function RuleChat({ onAddRule, lastAddedRule }: RuleChatProps) {
   const [text, setText] = useState("")
+  const [severity, setSeverity] = useState<Severity>("medium")
   const [feedback, setFeedback] = useState<FeedbackState>({ status: "idle" })
   const pendingRef = useRef<string | null>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -40,7 +44,6 @@ export function RuleChat({ onAddRule, lastAddedRule }: RuleChatProps) {
       pendingRef.current = null
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
       setFeedback({ status: "success", rule: lastAddedRule })
-      // Clear success after 4 seconds
       timeoutRef.current = setTimeout(() => setFeedback({ status: "idle" }), 4000)
     }
   }, [lastAddedRule, feedback.status])
@@ -51,11 +54,10 @@ export function RuleChat({ onAddRule, lastAddedRule }: RuleChatProps) {
 
     pendingRef.current = trimmed
     setFeedback({ status: "parsing", text: trimmed })
-    onAddRule(trimmed)
+    onAddRule(trimmed, severity)
     setText("")
     if (textareaRef.current) textareaRef.current.style.height = "auto"
 
-    // Timeout: if no rule_added in 15s, show error
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
     timeoutRef.current = setTimeout(() => {
       if (pendingRef.current) {
@@ -120,6 +122,25 @@ export function RuleChat({ onAddRule, lastAddedRule }: RuleChatProps) {
           <p className="text-[13px] text-destructive">{feedback.text}</p>
         </div>
       )}
+
+      {/* Severity picker */}
+      <div className="flex items-center gap-1">
+        <span className="text-[11px] text-muted-foreground mr-1">Severity</span>
+        {SEVERITIES.map((s) => (
+          <button
+            key={s}
+            onClick={() => setSeverity(s)}
+            className={`px-2 py-0.5 text-[11px] font-mono rounded-sm border transition-colors ${
+              severity === s
+                ? "border-current bg-current/10"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+            style={severity === s ? { color: SEVERITY_COLORS[s], borderColor: SEVERITY_COLORS[s] + "50" } : undefined}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
 
       <div className="flex items-end gap-2">
         <textarea
