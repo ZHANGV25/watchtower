@@ -1,6 +1,5 @@
 "use client"
 
-import { useState } from "react"
 import { AlertLog } from "@/components/AlertLog"
 import { AlertTimeline } from "@/components/AlertTimeline"
 import { Narration } from "@/components/Narration"
@@ -11,7 +10,7 @@ import { StatusBar } from "@/components/StatusBar"
 import { VideoFeed } from "@/components/VideoFeed"
 import { ZoneManager } from "@/components/ZoneManager"
 import { useWatchTower } from "@/lib/useWatchTower"
-import type { Alert } from "@/lib/types"
+import { useState } from "react"
 
 export default function Dashboard() {
   const {
@@ -24,28 +23,31 @@ export default function Dashboard() {
     lastAddedRule,
     fps,
     timestamp,
+    bufferStart,
     addRule,
     toggleRule,
     deleteRule,
     updateZones,
     autoGenerateZones,
-    requestReplay,
     clearAlerts,
     clearRules,
   } = useWatchTower()
 
-  const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null)
   const [replayTimestamp, setReplayTimestamp] = useState<number | null>(null)
+  const isReplayOpen = replayTimestamp !== null
 
   const latestAlert = alerts.length > 0 ? alerts[0] : null
 
-  const handleSelectAlert = (alert: Alert) => {
-    setSelectedAlert(alert)
+  const handleSelectAlert = (alert: import("@/lib/types").Alert) => {
     setReplayTimestamp(alert.timestamp)
   }
 
-  const handleTimelineSeek = (ts: number) => {
+  const handleTimelineScrub = (ts: number) => {
     setReplayTimestamp(ts)
+  }
+
+  const handleCloseReplay = () => {
+    setReplayTimestamp(null)
   }
 
   return (
@@ -59,7 +61,7 @@ export default function Dashboard() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left sidebar: Zones + Rules */}
-        <div className="w-64 border-r border-border flex flex-col shrink-0">
+        <div className="w-72 border-r border-border flex flex-col shrink-0 overflow-hidden">
           <div className="flex-1 min-h-0 border-b border-border">
             <ZoneManager
               zones={zones}
@@ -91,7 +93,7 @@ export default function Dashboard() {
           </div>
 
           {/* Narration bar */}
-          <div className="border-t border-border bg-card">
+          <div className="border-t border-border bg-card shrink-0 overflow-hidden">
             <Narration alert={latestAlert} />
           </div>
 
@@ -99,20 +101,14 @@ export default function Dashboard() {
           <AlertTimeline
             alerts={alerts}
             currentTimestamp={timestamp}
-            onSeek={handleTimelineSeek}
+            bufferStart={bufferStart}
+            onScrub={handleTimelineScrub}
+            isReplayOpen={isReplayOpen}
           />
-
-          {/* Replay overlay */}
-          {replayTimestamp !== null && (
-            <ReplayViewer
-              timestamp={replayTimestamp}
-              onClose={() => setReplayTimestamp(null)}
-            />
-          )}
         </div>
 
         {/* Right sidebar: Alerts */}
-        <div className="w-72 border-l border-border shrink-0">
+        <div className="w-80 border-l border-border shrink-0 overflow-hidden">
           <AlertLog
             alerts={alerts}
             onSelectAlert={handleSelectAlert}
@@ -120,6 +116,14 @@ export default function Dashboard() {
           />
         </div>
       </div>
+
+      {/* Replay overlay - full screen, separate from everything */}
+      {isReplayOpen && (
+        <ReplayViewer
+          timestamp={replayTimestamp}
+          onClose={handleCloseReplay}
+        />
+      )}
     </div>
   )
 }

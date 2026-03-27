@@ -14,6 +14,15 @@ interface VideoFeedProps {
 const CORNER_SIZE = 12
 const CORNER_THICKNESS = 2
 
+/** Scale font size relative to canvas width so labels stay readable at any resolution */
+function fontSize(canvasW: number, base: number = 16): number {
+  return Math.max(base, Math.round(canvasW / 45))
+}
+
+function fontStr(canvasW: number, base: number = 16): string {
+  return `${fontSize(canvasW, base)}px var(--font-geist-mono), monospace`
+}
+
 function drawCornerBrackets(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -54,6 +63,46 @@ function drawCornerBrackets(
   ctx.stroke()
 }
 
+function buildSmoothPath(
+  ctx: CanvasRenderingContext2D,
+  mask: PolygonPoint[],
+  canvasW: number,
+  canvasH: number,
+) {
+  // Convert percentage coords to canvas pixels
+  const pts = mask.map((p) => ({
+    x: (p.x / 100) * canvasW,
+    y: (p.y / 100) * canvasH,
+  }))
+
+  ctx.beginPath()
+
+  if (pts.length < 3) {
+    ctx.moveTo(pts[0].x, pts[0].y)
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y)
+    ctx.closePath()
+    return
+  }
+
+  // Catmull-Rom-style smooth curve through all points
+  // Start at the midpoint between last and first point
+  const mid = (a: { x: number; y: number }, b: { x: number; y: number }) => ({
+    x: (a.x + b.x) / 2,
+    y: (a.y + b.y) / 2,
+  })
+
+  const start = mid(pts[pts.length - 1], pts[0])
+  ctx.moveTo(start.x, start.y)
+
+  for (let i = 0; i < pts.length; i++) {
+    const next = pts[(i + 1) % pts.length]
+    const m = mid(pts[i], next)
+    ctx.quadraticCurveTo(pts[i].x, pts[i].y, m.x, m.y)
+  }
+
+  ctx.closePath()
+}
+
 function drawMaskGlow(
   ctx: CanvasRenderingContext2D,
   mask: PolygonPoint[],
@@ -63,36 +112,30 @@ function drawMaskGlow(
 ) {
   if (mask.length < 3) return
 
-  // Build the polygon path
-  ctx.beginPath()
-  const first = mask[0]
-  ctx.moveTo((first.x / 100) * canvasW, (first.y / 100) * canvasH)
-  for (let i = 1; i < mask.length; i++) {
-    ctx.lineTo((mask[i].x / 100) * canvasW, (mask[i].y / 100) * canvasH)
-  }
-  ctx.closePath()
-
-  // Outer glow (drawn first, behind everything)
+  // Outer glow
+  buildSmoothPath(ctx, mask, canvasW, canvasH)
   ctx.save()
   ctx.shadowColor = color
-  ctx.shadowBlur = 20
-  ctx.strokeStyle = color + "60"
-  ctx.lineWidth = 3
+  ctx.shadowBlur = 12
+  ctx.strokeStyle = color + "40"
+  ctx.lineWidth = 2
   ctx.stroke()
   ctx.restore()
 
-  // Inner glow (tighter, brighter)
+  // Crisp edge
+  buildSmoothPath(ctx, mask, canvasW, canvasH)
   ctx.save()
   ctx.shadowColor = color
-  ctx.shadowBlur = 8
-  ctx.strokeStyle = color + "90"
-  ctx.lineWidth = 1.5
+  ctx.shadowBlur = 4
+  ctx.strokeStyle = color + "70"
+  ctx.lineWidth = 1
   ctx.stroke()
   ctx.restore()
 
-  // Semi-transparent fill inside the silhouette
+  // Very subtle fill
+  buildSmoothPath(ctx, mask, canvasW, canvasH)
   ctx.save()
-  ctx.fillStyle = color + "0a"
+  ctx.fillStyle = color + "08"
   ctx.fill()
   ctx.restore()
 }
@@ -122,13 +165,15 @@ function drawZones(
     ctx.shadowBlur = 0
 
     // Label
-    ctx.font = "11px var(--font-geist-mono), monospace"
+    const zfs = fontSize(canvasW, 13)
+    ctx.font = fontStr(canvasW, 13)
     ctx.fillStyle = zone.color
     const textW = ctx.measureText(zone.name).width
+    const lh = zfs + 6
     ctx.fillStyle = "#000000aa"
-    ctx.fillRect(x, y - 16, textW + 8, 16)
+    ctx.fillRect(x, y - lh, textW + 10, lh)
     ctx.fillStyle = zone.color
-    ctx.fillText(zone.name, x + 4, y - 4)
+    ctx.fillText(zone.name, x + 5, y - 5)
   }
 }
 
@@ -158,14 +203,16 @@ function drawDetections(
 
     // Label background
     const label = `${det.class_name} ${Math.round(det.confidence * 100)}%`
-    ctx.font = "11px var(--font-geist-mono), monospace"
+    const dfs = fontSize(canvasW)
+    ctx.font = fontStr(canvasW)
     const textW = ctx.measureText(label).width
+    const dlh = dfs + 6
     ctx.fillStyle = "#000000cc"
-    ctx.fillRect(x, y - 18, textW + 8, 16)
+    ctx.fillRect(x, y - dlh - 2, textW + 10, dlh)
 
     // Label text
     ctx.fillStyle = color
-    ctx.fillText(label, x + 4, y - 6)
+    ctx.fillText(label, x + 5, y - 7)
   }
 }
 
@@ -173,11 +220,7 @@ function drawHUD(
   ctx: CanvasRenderingContext2D,
   canvasW: number,
   canvasH: number,
-  fps: number,
-  timestamp: number,
 ) {
-  ctx.font = "11px var(--font-geist-mono), monospace"
-
   // Crosshair (very subtle)
   ctx.strokeStyle = "#22d3ee10"
   ctx.lineWidth = 0.5
@@ -187,30 +230,6 @@ function drawHUD(
   ctx.moveTo(0, canvasH / 2)
   ctx.lineTo(canvasW, canvasH / 2)
   ctx.stroke()
-
-  // FPS counter - top right
-  const fpsText = `${fps} FPS`
-  const fpsW = ctx.measureText(fpsText).width
-  ctx.fillStyle = "#000000aa"
-  ctx.fillRect(canvasW - fpsW - 16, 8, fpsW + 12, 18)
-  ctx.fillStyle = "#22d3ee"
-  ctx.fillText(fpsText, canvasW - fpsW - 10, 21)
-
-  // Timestamp - bottom left
-  const date = new Date(timestamp * 1000)
-  const timeStr = date.toLocaleTimeString("en-US", { hour12: false })
-  ctx.fillStyle = "#000000aa"
-  ctx.fillRect(8, canvasH - 28, ctx.measureText(timeStr).width + 12, 18)
-  ctx.fillStyle = "#22d3ee80"
-  ctx.fillText(timeStr, 14, canvasH - 14)
-
-  // Recording indicator - top left
-  ctx.fillStyle = "#ef4444"
-  ctx.beginPath()
-  ctx.arc(20, 17, 4, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.fillStyle = "#ef4444"
-  ctx.fillText("REC", 30, 21)
 }
 
 export function VideoFeed({ frame, detections, zones, fps, timestamp }: VideoFeedProps) {
@@ -238,7 +257,7 @@ export function VideoFeed({ frame, detections, zones, fps, timestamp }: VideoFee
       ctx.drawImage(img, 0, 0)
       drawZones(ctx, zones, canvas.width, canvas.height)
       drawDetections(ctx, detections, canvas.width, canvas.height)
-      drawHUD(ctx, canvas.width, canvas.height, fps, timestamp)
+      drawHUD(ctx, canvas.width, canvas.height)
     }
     img.src = `data:image/jpeg;base64,${frame}`
   }, [frame, detections, zones, fps, timestamp])
@@ -252,8 +271,8 @@ export function VideoFeed({ frame, detections, zones, fps, timestamp }: VideoFee
               <path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
             </svg>
           </div>
-          <span className="font-mono text-[12px]">No camera feed</span>
-          <span className="font-mono text-[11px] text-muted-foreground/50">Rules, zones, and alerts still functional</span>
+          <span className="font-mono text-sm">No camera feed</span>
+          <span className="font-mono text-[13px] text-muted-foreground/50">Rules, zones, and alerts still functional</span>
         </div>
       )}
       <canvas

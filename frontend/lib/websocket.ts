@@ -22,6 +22,7 @@ interface WatchTowerEvents {
   rule_deleted: { id: string }
   zones_updated: { zones: Zone[] }
   replay: ReplayPayload
+  replay_frame: { frame: string | null; timestamp: number }
   replay_timestamps: ReplayTimestampsPayload
   alerts_cleared: Record<string, never>
   rules_cleared: Record<string, never>

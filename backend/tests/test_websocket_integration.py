@@ -199,3 +199,15 @@ class TestClearRules:
             init = json.loads(raw)
             assert init["type"] == "init"
             assert len(init["payload"]["rules"]) == 0, "Rules should be empty after clear"
+
+
+@pytest.mark.asyncio
+class TestGetFrameAt:
+    async def test_get_frame_at_returns_replay_frame(self, ws):
+        """Requesting a frame at a timestamp should return a replay_frame message."""
+        import time
+        await ws.send(_make_msg("get_frame_at", {"timestamp": time.time()}))
+        msg = await _wait_for_msg(ws, "replay_frame", timeout=5)
+        assert msg is not None, "Did not receive replay_frame"
+        assert "frame" in msg["payload"]
+        assert "timestamp" in msg["payload"]

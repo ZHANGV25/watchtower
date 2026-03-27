@@ -85,13 +85,13 @@ async def camera_loop() -> None:
     camera_running = True
     log.info("Camera started")
 
-    frame_interval = 1.0 / 15  # target ~15 fps for processing
+    frame_interval = 1.0 / 24  # target ~24 fps
     last_frame_time = 0.0
 
     while camera_running:
         now = time.time()
         if now - last_frame_time < frame_interval:
-            await asyncio.sleep(0.005)
+            await asyncio.sleep(0.003)
             continue
 
         ok, frame = camera.read()
@@ -101,8 +101,19 @@ async def camera_loop() -> None:
 
         last_frame_time = now
 
-        # Run detection
-        detections = detector.detect(frame)
+        # Only run pose estimation if any rule uses pose conditions
+        pose_types = {"person_pose", "person_falling"}
+        need_pose = any(
+            c.type in pose_types
+            for r in rules if r.enabled
+            for c in r.conditions
+        )
+
+        # Run detection in thread pool so it doesn't block the event loop
+        loop = asyncio.get_event_loop()
+        detections = await loop.run_in_executor(
+            None, detector.detect, frame, need_pose
+        )
 
         # Store in replay buffer
         replay_buffer.add_frame(frame, now)
@@ -110,24 +121,21 @@ async def camera_loop() -> None:
         # Check rules
         fired = rule_engine.evaluate(rules, zones, detections, now)
 
-        # Process fired alerts
+        # Process fired alerts: verify with LLM before broadcasting
         for alert in fired:
             alert.frame_b64 = frame_to_b64(frame, quality=80)
-            alerts.append(alert)
+            asyncio.create_task(_verify_and_broadcast_alert(alert, frame))
 
-            await broadcast(WSMessage(
-                type="alert",
-                payload=alert.model_dump(),
-            ))
-
-            # Narrate asynchronously
-            asyncio.create_task(_narrate_alert(alert, frame))
+        # Encode frame off the event loop
+        frame_b64 = await loop.run_in_executor(
+            None, frame_to_b64, frame, 50
+        )
 
         # Broadcast frame + detections
         await broadcast(WSMessage(
             type="frame",
             payload={
-                "frame": frame_to_b64(frame, quality=50),
+                "frame": frame_b64,
                 "detections": [d.model_dump() for d in detections],
                 "timestamp": now,
                 "fps": round(1.0 / max(time.time() - now, 0.001)),
@@ -138,16 +146,25 @@ async def camera_loop() -> None:
     log.info("Camera stopped")
 
 
-async def _narrate_alert(alert: Alert, frame: np.ndarray) -> None:
+async def _verify_and_broadcast_alert(alert: Alert, frame: np.ndarray) -> None:
     try:
-        narration = await narrator.narrate(frame, alert)
-        alert.narration = narration
-        await broadcast(WSMessage(
-            type="narration",
-            payload={"alert_id": alert.id, "narration": narration},
-        ))
+        result = await narrator.verify(frame, alert)
+        if not result.confirmed:
+            log.info("Alert '%s' rejected by LLM verification", alert.rule_name)
+            return
+        alert.narration = result.note
+        alerts.append(alert)
+        await broadcast(WSMessage(type="alert", payload=alert.model_dump()))
+        if result.note:
+            await broadcast(WSMessage(
+                type="narration",
+                payload={"alert_id": alert.id, "narration": result.note},
+            ))
     except Exception as e:
-        log.error("Narration failed: %s", e)
+        log.error("Verification failed: %s", e)
+        # On error, still broadcast (don't suppress real alerts)
+        alerts.append(alert)
+        await broadcast(WSMessage(type="alert", payload=alert.model_dump()))
 
 
 # ---------------------------------------------------------------------------
@@ -337,6 +354,22 @@ async def _handle_get_replay_timestamps(ws: WebSocket, payload: dict[str, Any]) 
     ).model_dump_json())
 
 
+async def _handle_get_frame_at(ws: WebSocket, payload: dict[str, Any]) -> None:
+    timestamp = payload.get("timestamp", 0.0)
+    result = replay_buffer.get_frame_at(timestamp)
+    if result is None:
+        await ws.send_text(WSMessage(
+            type="replay_frame",
+            payload={"frame": None, "timestamp": 0},
+        ).model_dump_json())
+        return
+    frame, ts = result
+    await ws.send_text(WSMessage(
+        type="replay_frame",
+        payload={"frame": frame_to_b64(frame, quality=60), "timestamp": ts},
+    ).model_dump_json())
+
+
 async def _handle_clear_alerts(ws: WebSocket, payload: dict[str, Any]) -> None:
     global alerts
     alerts = []
@@ -360,6 +393,7 @@ _message_handlers = {
     "auto_zones": _handle_auto_zones,
     "get_replay": _handle_get_replay,
     "get_replay_timestamps": _handle_get_replay_timestamps,
+    "get_frame_at": _handle_get_frame_at,
     "clear_alerts": _handle_clear_alerts,
     "clear_rules": _handle_clear_rules,
 }

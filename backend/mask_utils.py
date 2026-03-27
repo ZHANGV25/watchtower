@@ -1,11 +1,12 @@
 """Utilities for processing YOLO segmentation masks into polygon points."""
 from __future__ import annotations
 
+import cv2
 import numpy as np
 
 from models import PolygonPoint
 
-MAX_POLYGON_POINTS = 50
+MAX_POLYGON_POINTS = 40
 
 
 def extract_mask_polygon(
@@ -16,10 +17,8 @@ def extract_mask_polygon(
 ) -> list[PolygonPoint] | None:
     """Extract a segmentation mask polygon for the detection at the given index.
 
-    The YOLO seg model provides masks.xy — a list of (N, 2) arrays where
-    each array contains the (x_pixel, y_pixel) polygon vertices for one
-    detection. We convert to percentage coordinates and downsample to
-    keep payload size reasonable.
+    Uses Douglas-Peucker polygon approximation for clean, smooth contours
+    rather than raw point downsampling.
 
     Args:
         masks: YOLO masks object (has .xy attribute) or None.
@@ -38,18 +37,28 @@ def extract_mask_polygon(
         return None
 
     polygon_xy = xy_list[idx]
-    if len(polygon_xy) == 0:
+    if len(polygon_xy) < 3:
         return None
 
-    # Downsample if too many points
-    if len(polygon_xy) > MAX_POLYGON_POINTS:
-        indices = np.linspace(0, len(polygon_xy) - 1, MAX_POLYGON_POINTS, dtype=int)
-        polygon_xy = polygon_xy[indices]
+    # Douglas-Peucker simplification for clean contours
+    contour = np.array(polygon_xy, dtype=np.float32).reshape(-1, 1, 2)
+    perimeter = cv2.arcLength(contour, closed=True)
+    # Adaptive epsilon: tighter for small objects, looser for large
+    epsilon = perimeter * 0.015
+    approx = cv2.approxPolyDP(contour, epsilon, closed=True).reshape(-1, 2)
+
+    # If still too many points, increase epsilon until under limit
+    if len(approx) > MAX_POLYGON_POINTS:
+        epsilon = perimeter * 0.025
+        approx = cv2.approxPolyDP(contour, epsilon, closed=True).reshape(-1, 2)
+
+    if len(approx) < 3:
+        return None
 
     return [
         PolygonPoint(
             x=(float(pt[0]) / frame_w) * 100,
             y=(float(pt[1]) / frame_h) * 100,
         )
-        for pt in polygon_xy
+        for pt in approx
     ]

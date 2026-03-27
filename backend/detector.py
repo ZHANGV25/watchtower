@@ -27,9 +27,15 @@ _POSE_LANDMARKS = [
 
 
 class Detector:
-    """Runs YOLO v8n-seg (instance segmentation) and MediaPipe Pose on each frame."""
+    """Runs YOLO v8n (detection or segmentation) and MediaPipe Pose on each frame.
 
-    def __init__(self, yolo_model: str = "yolov8n-seg.pt") -> None:
+    Set WATCHTOWER_SEG=1 to enable segmentation masks. Default is bounding boxes only.
+    """
+
+    def __init__(self, yolo_model: str | None = None) -> None:
+        if yolo_model is None:
+            import os
+            yolo_model = "yolov8n-seg.pt" if os.getenv("WATCHTOWER_SEG") == "1" else "yolov8n.pt"
         log.info("Loading YOLO model: %s", yolo_model)
         self._yolo = YOLO(yolo_model)
 
@@ -41,21 +47,23 @@ class Detector:
             min_tracking_confidence=0.5,
         )
 
-    def detect(self, frame: np.ndarray) -> list[Detection]:
+    def detect(self, frame: np.ndarray, need_pose: bool = False) -> list[Detection]:
         h, w = frame.shape[:2]
         detections: list[Detection] = []
 
-        # YOLO segmentation
-        results = self._yolo(frame, verbose=False)
+        # YOLO segmentation (imgsz=480 for speed)
+        results = self._yolo(frame, verbose=False, imgsz=480)
         result = results[0] if results else None
 
         yolo_boxes = result.boxes if result else []
         yolo_masks = result.masks if result else None
 
-        # MediaPipe pose (on full frame)
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        pose_result = self._mp_pose.process(rgb)
-        pose_keypoints = self._extract_pose(pose_result, w, h)
+        # MediaPipe pose only when needed (has pose rules)
+        pose_keypoints = None
+        if need_pose:
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            pose_result = self._mp_pose.process(rgb)
+            pose_keypoints = self._extract_pose(pose_result, w, h)
 
         for i, box in enumerate(yolo_boxes):
             cls_id = int(box.cls[0])

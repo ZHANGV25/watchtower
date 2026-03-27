@@ -156,30 +156,42 @@ class TestExtractMaskPolygon:
         assert result[2].x == pytest.approx(25.0)
         assert result[2].y == pytest.approx(50.0)
 
-    def test_downsampling(self):
-        """Polygons with > 50 points should be downsampled."""
-        points = np.array([[i, i * 2] for i in range(200)], dtype=np.float32)
+    def test_simplification_reduces_points(self):
+        """Complex polygon should be simplified via Douglas-Peucker."""
+        # Circle-like polygon with 200 points -- should be simplified significantly
+        angles = np.linspace(0, 2 * np.pi, 200, endpoint=False)
+        points = np.column_stack([
+            500 + 300 * np.cos(angles),
+            500 + 300 * np.sin(angles),
+        ]).astype(np.float32)
         masks = MockMasks([points])
         result = extract_mask_polygon(masks, 0, 1000, 1000)
 
         assert result is not None
-        assert len(result) == 50
+        assert len(result) < 200
+        assert len(result) <= 40  # MAX_POLYGON_POINTS
 
-    def test_exactly_50_points_no_downsample(self):
-        points = np.array([[i * 10, i * 5] for i in range(50)], dtype=np.float32)
+    def test_simple_polygon_preserved(self):
+        """A clean rectangle should stay roughly the same."""
+        points = np.array([
+            [100, 100], [500, 100], [500, 400], [100, 400],
+        ], dtype=np.float32)
         masks = MockMasks([points])
         result = extract_mask_polygon(masks, 0, 1000, 1000)
 
         assert result is not None
-        assert len(result) == 50
+        assert len(result) == 4
 
-    def test_fewer_than_50_points_no_downsample(self):
-        points = np.array([[i * 20, i * 10] for i in range(15)], dtype=np.float32)
+    def test_small_polygon_not_lost(self):
+        """A valid small polygon should not be simplified to nothing."""
+        points = np.array([
+            [10, 10], [50, 10], [50, 50], [10, 50],
+        ], dtype=np.float32)
         masks = MockMasks([points])
         result = extract_mask_polygon(masks, 0, 1000, 1000)
 
         assert result is not None
-        assert len(result) == 15
+        assert len(result) >= 3
 
     def test_multiple_detections_correct_index(self):
         poly0 = np.array([[0, 0], [100, 0], [100, 100]], dtype=np.float32)
@@ -196,14 +208,17 @@ class TestExtractMaskPolygon:
 
     def test_percentage_coordinates(self):
         """Verify output is in percentage coordinates, not pixel."""
-        polygon = np.array([[640, 480]], dtype=np.float32)
+        polygon = np.array([
+            [0, 0], [640, 0], [640, 480], [0, 480],
+        ], dtype=np.float32)
         masks = MockMasks([polygon])
         result = extract_mask_polygon(masks, 0, 640, 480)
 
         assert result is not None
-        assert len(result) == 1
-        assert result[0].x == pytest.approx(100.0)
-        assert result[0].y == pytest.approx(100.0)
+        # All points should be in 0-100 range
+        for pt in result:
+            assert 0.0 <= pt.x <= 100.0
+            assert 0.0 <= pt.y <= 100.0
 
     def test_masks_without_xy_attribute(self):
         """Object without .xy should return None."""

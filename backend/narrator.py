@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import os
+from dataclasses import dataclass
 
 import anthropic
 import cv2
@@ -12,19 +14,29 @@ from models import Alert
 
 log = logging.getLogger("watchtower.narrator")
 
-_BEDROCK_MODEL = "us.anthropic.claude-sonnet-4-6"
+_BEDROCK_MODEL = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
-_SYSTEM_PROMPT = """You are a safety monitoring assistant for WatchTower, a camera monitoring system.
+_SYSTEM_PROMPT = """You are a verification gate for WatchTower, a camera monitoring system.
 
-An alert has been triggered by a detection rule. Describe what you see in the camera frame in 1-2 sentences.
+A detection rule has fired based on YOLO object detection. Your job is to look at the camera frame and verify whether the alert is a true positive or a false positive.
 
-Be specific about:
-- Who or what is visible in the frame
-- What they appear to be doing
-- Why this triggered the alert
-- Whether immediate action seems warranted
+Respond with ONLY valid JSON (no markdown, no explanation):
+{"confirmed": true} or {"confirmed": false}
 
-Be calm, factual, and concise. Do not speculate beyond what is visible. Do not be alarmist."""
+Only add a "note" field if the situation is genuinely ambiguous or noteworthy:
+{"confirmed": true, "note": "Two people near the restricted zone, one may be entering"}
+
+Rules:
+- confirmed=true: The scene clearly matches what the rule describes
+- confirmed=false: YOLO misidentified something, or the scene does not match the rule
+- Keep notes under 20 words. Most responses should have no note at all.
+- When in doubt, confirm. False negatives are worse than false positives."""
+
+
+@dataclass
+class VerificationResult:
+    confirmed: bool
+    note: str
 
 
 class Narrator:
@@ -33,23 +45,24 @@ class Narrator:
             aws_region=os.getenv("AWS_REGION", "us-east-1"),
         )
 
-    async def narrate(self, frame: np.ndarray, alert: Alert) -> str:
+    async def verify(self, frame: np.ndarray, alert: Alert) -> VerificationResult:
+        """Verify whether an alert is a true positive. Returns confirmation + optional note."""
         ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
         if not ok:
-            return "Unable to process frame for narration."
+            return VerificationResult(confirmed=True, note="")
 
         b64 = base64.b64encode(buf.tobytes()).decode("ascii")
 
         context = (
-            f"Alert: {alert.rule_name}\n"
+            f"Rule: {alert.rule_name}\n"
             f"Severity: {alert.severity}\n"
-            f"Detections: {', '.join(d.class_name for d in alert.detections)}"
+            f"YOLO detections: {', '.join(d.class_name for d in alert.detections)}"
         )
 
         try:
             response = await self._client.messages.create(
                 model=_BEDROCK_MODEL,
-                max_tokens=256,
+                max_tokens=100,
                 system=_SYSTEM_PROMPT,
                 messages=[{
                     "role": "user",
@@ -70,8 +83,22 @@ class Narrator:
                 }],
             )
 
-            return response.content[0].text.strip()
+            raw = response.content[0].text.strip()
+            # Strip markdown fences if present
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                # Remove optional language tag (e.g. "json\n")
+                if raw.startswith("json"):
+                    raw = raw[4:]
+                raw = raw.strip()
+
+            parsed = json.loads(raw)
+            return VerificationResult(
+                confirmed=parsed.get("confirmed", True),
+                note=parsed.get("note", ""),
+            )
 
         except Exception as e:
-            log.error("Narration failed: %s", e)
-            return f"Alert triggered: {alert.rule_name}"
+            log.error("Verification failed: %s", e)
+            # Default to confirmed on error (don't suppress real alerts)
+            return VerificationResult(confirmed=True, note="")

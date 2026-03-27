@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { socket } from "./websocket"
 import type {
   Alert,
@@ -10,18 +10,6 @@ import type {
   Rule,
   Zone,
 } from "./types"
-
-export interface WatchTowerState {
-  connected: boolean
-  frame: string | null
-  detections: Detection[]
-  zones: Zone[]
-  rules: Rule[]
-  alerts: Alert[]
-  lastAddedRule: Rule | null
-  fps: number
-  timestamp: number
-}
 
 export function useWatchTower() {
   const [connected, setConnected] = useState(false)
@@ -33,20 +21,14 @@ export function useWatchTower() {
   const [lastAddedRule, setLastAddedRule] = useState<Rule | null>(null)
   const [fps, setFps] = useState(0)
   const [timestamp, setTimestamp] = useState(0)
-  const connectedRef = useRef(false)
+  const [bufferStart, setBufferStart] = useState(0)
 
   useEffect(() => {
     socket.connect()
 
     const unsubs = [
-      socket.on("connected", () => {
-        setConnected(true)
-        connectedRef.current = true
-      }),
-      socket.on("disconnected", () => {
-        setConnected(false)
-        connectedRef.current = false
-      }),
+      socket.on("connected", () => setConnected(true)),
+      socket.on("disconnected", () => setConnected(false)),
       socket.on("init", (data) => {
         const init = data as unknown as InitPayload
         setZones(init.zones)
@@ -59,6 +41,7 @@ export function useWatchTower() {
         setDetections(f.detections)
         setFps(f.fps)
         setTimestamp(f.timestamp)
+        setBufferStart((prev) => (prev === 0 ? f.timestamp : prev))
       }),
       socket.on("alert", (data) => {
         const alert = data as unknown as Alert
@@ -67,9 +50,7 @@ export function useWatchTower() {
       socket.on("narration", (data) => {
         const { alert_id, narration } = data as { alert_id: string; narration: string }
         setAlerts((prev) =>
-          prev.map((a) =>
-            a.id === alert_id ? { ...a, narration } : a
-          )
+          prev.map((a) => (a.id === alert_id ? { ...a, narration } : a))
         )
       }),
       socket.on("rule_added", (data) => {
@@ -79,9 +60,7 @@ export function useWatchTower() {
       }),
       socket.on("rule_updated", (data) => {
         const rule = data as unknown as Rule
-        setRules((prev) =>
-          prev.map((r) => (r.id === rule.id ? rule : r))
-        )
+        setRules((prev) => prev.map((r) => (r.id === rule.id ? rule : r)))
       }),
       socket.on("rule_deleted", (data) => {
         const { id } = data as { id: string }
@@ -91,12 +70,8 @@ export function useWatchTower() {
         const { zones: newZones } = data as { zones: Zone[] }
         setZones(newZones)
       }),
-      socket.on("alerts_cleared", () => {
-        setAlerts([])
-      }),
-      socket.on("rules_cleared", () => {
-        setRules([])
-      }),
+      socket.on("alerts_cleared", () => setAlerts([])),
+      socket.on("rules_cleared", () => setRules([])),
     ]
 
     return () => {
@@ -125,10 +100,6 @@ export function useWatchTower() {
     socket.send("auto_zones", {})
   }, [])
 
-  const requestReplay = useCallback((ts: number, duration: number = 10) => {
-    socket.send("get_replay", { timestamp: ts, duration })
-  }, [])
-
   const clearAlerts = useCallback(() => {
     setAlerts([])
     socket.send("clear_alerts", {})
@@ -149,12 +120,12 @@ export function useWatchTower() {
     lastAddedRule,
     fps,
     timestamp,
+    bufferStart,
     addRule,
     toggleRule,
     deleteRule,
     updateZones,
     autoGenerateZones,
-    requestReplay,
     clearAlerts,
     clearRules,
   }

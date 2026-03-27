@@ -19,11 +19,11 @@ export function RuleList({ rules, onToggle, onDelete, onClearAll }: RuleListProp
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-        <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        <span className="text-[13px] font-medium uppercase tracking-wider text-muted-foreground">
           Rules
         </span>
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-muted-foreground font-mono">
+          <span className="text-[13px] text-muted-foreground font-mono">
             {rules.filter((r) => r.enabled).length}/{rules.length} active
           </span>
           {rules.length > 0 && (
@@ -43,7 +43,7 @@ export function RuleList({ rules, onToggle, onDelete, onClearAll }: RuleListProp
       <ScrollArea className="flex-1">
         <div className="p-2 space-y-1">
           {rules.length === 0 && (
-            <div className="text-[11px] text-muted-foreground px-2 py-4 text-center">
+            <div className="text-[13px] text-muted-foreground px-2 py-4 text-center">
               No rules defined. Type a rule below to get started.
             </div>
           )}
@@ -60,12 +60,12 @@ export function RuleList({ rules, onToggle, onDelete, onClearAll }: RuleListProp
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className={`text-[12px] font-medium leading-tight ${!rule.enabled ? "text-muted-foreground" : ""}`}>
+                  <span className={`text-sm font-medium leading-tight ${!rule.enabled ? "text-muted-foreground" : ""}`}>
                     {rule.name}
                   </span>
                   <Badge
                     variant="outline"
-                    className="text-[10px] px-1.5 py-0 h-4 shrink-0 border"
+                    className="text-[11px] px-1.5 py-0 h-4 shrink-0 border"
                     style={{
                       color: SEVERITY_COLORS[rule.severity],
                       borderColor: SEVERITY_COLORS[rule.severity] + "50",
@@ -74,14 +74,14 @@ export function RuleList({ rules, onToggle, onDelete, onClearAll }: RuleListProp
                     {rule.severity}
                   </Badge>
                 </div>
-                <p className="text-[11px] text-muted-foreground font-mono mt-1 leading-snug">
+                <p className="text-[13px] text-muted-foreground font-mono mt-1 leading-snug">
                   {rule.natural_language}
                 </p>
                 <div className="flex flex-wrap gap-1 mt-1">
                   {rule.conditions.map((c, i) => (
                     <span
                       key={i}
-                      className="text-[9px] font-mono px-1 py-0.5 bg-cyan-400/10 text-cyan-400/80 border border-cyan-400/20 rounded-sm"
+                      className="text-[11px] font-mono px-1 py-0.5 bg-cyan-400/10 text-cyan-400/80 border border-cyan-400/20 rounded-sm"
                     >
                       {c.type}
                     </span>
