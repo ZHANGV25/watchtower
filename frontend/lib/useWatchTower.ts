@@ -1,0 +1,139 @@
+"use client"
+
+import { useCallback, useEffect, useRef, useState } from "react"
+import { socket } from "./websocket"
+import type {
+  Alert,
+  Detection,
+  FramePayload,
+  InitPayload,
+  Rule,
+  Zone,
+} from "./types"
+
+export interface WatchTowerState {
+  connected: boolean
+  frame: string | null
+  detections: Detection[]
+  zones: Zone[]
+  rules: Rule[]
+  alerts: Alert[]
+  fps: number
+  timestamp: number
+}
+
+export function useWatchTower() {
+  const [connected, setConnected] = useState(false)
+  const [frame, setFrame] = useState<string | null>(null)
+  const [detections, setDetections] = useState<Detection[]>([])
+  const [zones, setZones] = useState<Zone[]>([])
+  const [rules, setRules] = useState<Rule[]>([])
+  const [alerts, setAlerts] = useState<Alert[]>([])
+  const [fps, setFps] = useState(0)
+  const [timestamp, setTimestamp] = useState(0)
+  const connectedRef = useRef(false)
+
+  useEffect(() => {
+    socket.connect()
+
+    const unsubs = [
+      socket.on("connected", () => {
+        setConnected(true)
+        connectedRef.current = true
+      }),
+      socket.on("disconnected", () => {
+        setConnected(false)
+        connectedRef.current = false
+      }),
+      socket.on("init", (data) => {
+        const init = data as unknown as InitPayload
+        setZones(init.zones)
+        setRules(init.rules)
+        setAlerts(init.alerts)
+      }),
+      socket.on("frame", (data) => {
+        const f = data as unknown as FramePayload
+        setFrame(f.frame)
+        setDetections(f.detections)
+        setFps(f.fps)
+        setTimestamp(f.timestamp)
+      }),
+      socket.on("alert", (data) => {
+        const alert = data as unknown as Alert
+        setAlerts((prev) => [alert, ...prev].slice(0, 100))
+      }),
+      socket.on("narration", (data) => {
+        const { alert_id, narration } = data as { alert_id: string; narration: string }
+        setAlerts((prev) =>
+          prev.map((a) =>
+            a.id === alert_id ? { ...a, narration } : a
+          )
+        )
+      }),
+      socket.on("rule_added", (data) => {
+        const rule = data as unknown as Rule
+        setRules((prev) => [...prev, rule])
+      }),
+      socket.on("rule_updated", (data) => {
+        const rule = data as unknown as Rule
+        setRules((prev) =>
+          prev.map((r) => (r.id === rule.id ? rule : r))
+        )
+      }),
+      socket.on("rule_deleted", (data) => {
+        const { id } = data as { id: string }
+        setRules((prev) => prev.filter((r) => r.id !== id))
+      }),
+      socket.on("zones_updated", (data) => {
+        const { zones: newZones } = data as { zones: Zone[] }
+        setZones(newZones)
+      }),
+    ]
+
+    return () => {
+      unsubs.forEach((unsub) => unsub())
+      socket.disconnect()
+    }
+  }, [])
+
+  const addRule = useCallback((text: string) => {
+    socket.send("add_rule", { text })
+  }, [])
+
+  const toggleRule = useCallback((id: string) => {
+    socket.send("toggle_rule", { id })
+  }, [])
+
+  const deleteRule = useCallback((id: string) => {
+    socket.send("delete_rule", { id })
+  }, [])
+
+  const updateZones = useCallback((newZones: Zone[]) => {
+    socket.send("update_zones", { zones: newZones })
+  }, [])
+
+  const autoGenerateZones = useCallback(() => {
+    socket.send("auto_zones", {})
+  }, [])
+
+  const requestReplay = useCallback((ts: number, duration: number = 10) => {
+    socket.send("get_replay", { timestamp: ts, duration })
+  }, [])
+
+  return {
+    connected,
+    frame,
+    detections,
+    zones,
+    rules,
+    alerts,
+    fps,
+    timestamp,
+    addRule,
+    toggleRule,
+    deleteRule,
+    updateZones,
+    autoGenerateZones,
+    requestReplay,
+  }
+}
