@@ -71,7 +71,7 @@ class RuleParser:
             aws_region=os.getenv("AWS_REGION", "us-east-1"),
         )
 
-    async def parse(self, text: str, zone_names: list[str], severity: str = "medium") -> Rule | None:
+    async def parse(self, text: str, zone_names: list[str], severity: str = "medium") -> tuple[Rule, list[str]] | None:
         zones_str = ", ".join(zone_names) if zone_names else "(no zones defined yet)"
 
         try:
@@ -96,12 +96,24 @@ class RuleParser:
                 for c in parsed.get("conditions", [])
             ]
 
-            return Rule(
+            # Check for zone references that don't match any existing zone
+            missing_zones = []
+            for c in conditions:
+                if c.type in ("object_in_zone", "object_not_in_zone"):
+                    ref = c.params.get("zone", "")
+                    if ref and not any(
+                        z.lower() == ref.lower() for z in zone_names
+                    ):
+                        missing_zones.append(ref)
+
+            rule = Rule(
                 name=parsed.get("name", "Unnamed rule"),
                 natural_language=text,
                 conditions=conditions,
                 severity=severity,
             )
+
+            return rule, missing_zones
 
         except Exception as e:
             log.error("Failed to parse rule '%s': %s", text, e)

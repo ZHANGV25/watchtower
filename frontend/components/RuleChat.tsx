@@ -44,9 +44,12 @@ export function RuleChat({ onAddRule, lastAddedRule }: RuleChatProps) {
       pendingRef.current = null
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
       setFeedback({ status: "success", rule: lastAddedRule })
-      timeoutRef.current = setTimeout(() => setFeedback({ status: "idle" }), 4000)
+      timeoutRef.current = setTimeout(() => setFeedback({ status: "idle" }), 6000)
     }
   }, [lastAddedRule, feedback.status])
+
+  // Extract missing zones from the last added rule (injected by backend)
+  const missingZones: string[] = (lastAddedRule as Record<string, unknown> | null)?._missing_zones as string[] ?? []
 
   const handleSubmit = () => {
     const trimmed = text.trim()
@@ -112,6 +115,20 @@ export function RuleChat({ onAddRule, lastAddedRule }: RuleChatProps) {
                 </span>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {feedback.status === "success" && missingZones.length > 0 && (
+        <div className="flex items-start gap-2 px-2.5 py-2 bg-muted/50 border border-amber-400/30 rounded-sm">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-400 mt-0.5" />
+          <div className="min-w-0">
+            <p className="text-[13px] text-amber-400">
+              Zone{missingZones.length > 1 ? "s" : ""} not found: {missingZones.join(", ")}
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              This rule won't fire until matching zones are created via Auto-detect or manually.
+            </p>
           </div>
         </div>
       )}
