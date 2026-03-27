@@ -30,11 +30,17 @@ export interface PoseKeypoint {
   visibility: number
 }
 
+export interface PolygonPoint {
+  x: number // percentage 0-100
+  y: number
+}
+
 export interface Detection {
   class_name: string
   confidence: number
   bbox: BBox
   pose: PoseKeypoint[] | null
+  mask: PolygonPoint[] | null // segmentation polygon outline
 }
 
 // ---------------------------------------------------------------------------

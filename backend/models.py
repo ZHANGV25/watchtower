@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -47,11 +47,17 @@ class PoseKeypoint(BaseModel):
     visibility: float
 
 
+class PolygonPoint(BaseModel):
+    x: float  # percentage 0-100
+    y: float
+
+
 class Detection(BaseModel):
     class_name: str
     confidence: float
     bbox: BBox
-    pose: list[PoseKeypoint] | None = None
+    pose: Optional[list[PoseKeypoint]] = None
+    mask: Optional[list[PolygonPoint]] = None  # segmentation polygon outline
 
 
 # ---------------------------------------------------------------------------

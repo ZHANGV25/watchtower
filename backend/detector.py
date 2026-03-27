@@ -7,6 +7,7 @@ import mediapipe as mp
 import numpy as np
 from ultralytics import YOLO
 
+from mask_utils import extract_mask_polygon
 from models import BBox, Detection, PoseKeypoint
 
 log = logging.getLogger("watchtower.detector")
@@ -26,7 +27,9 @@ _POSE_LANDMARKS = [
 
 
 class Detector:
-    def __init__(self, yolo_model: str = "yolov8n.pt") -> None:
+    """Runs YOLO v8n-seg (instance segmentation) and MediaPipe Pose on each frame."""
+
+    def __init__(self, yolo_model: str = "yolov8n-seg.pt") -> None:
         log.info("Loading YOLO model: %s", yolo_model)
         self._yolo = YOLO(yolo_model)
 
@@ -42,16 +45,19 @@ class Detector:
         h, w = frame.shape[:2]
         detections: list[Detection] = []
 
-        # YOLO detection
+        # YOLO segmentation
         results = self._yolo(frame, verbose=False)
-        yolo_boxes = results[0].boxes if results else []
+        result = results[0] if results else None
+
+        yolo_boxes = result.boxes if result else []
+        yolo_masks = result.masks if result else None
 
         # MediaPipe pose (on full frame)
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         pose_result = self._mp_pose.process(rgb)
         pose_keypoints = self._extract_pose(pose_result, w, h)
 
-        for box in yolo_boxes:
+        for i, box in enumerate(yolo_boxes):
             cls_id = int(box.cls[0])
             cls_name = self._yolo.names.get(cls_id, "unknown")
             conf = float(box.conf[0])
@@ -68,6 +74,9 @@ class Detector:
                 height=((y2 - y1) / h) * 100,
             )
 
+            # Extract segmentation polygon
+            mask_polygon = extract_mask_polygon(yolo_masks, i, w, h)
+
             # Attach pose to person detections
             pose = pose_keypoints if cls_name == "person" else None
 
@@ -76,6 +85,7 @@ class Detector:
                 confidence=round(conf, 3),
                 bbox=bbox,
                 pose=pose,
+                mask=mask_polygon,
             ))
 
         return detections

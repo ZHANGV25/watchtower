@@ -1,8 +1,7 @@
 "use client"
 
 import { useEffect, useRef } from "react"
-import type { Detection, Zone } from "@/lib/types"
-import { SEVERITY_COLORS } from "@/lib/types"
+import type { Detection, PolygonPoint, Zone } from "@/lib/types"
 
 interface VideoFeedProps {
   frame: string | null
@@ -55,6 +54,49 @@ function drawCornerBrackets(
   ctx.stroke()
 }
 
+function drawMaskGlow(
+  ctx: CanvasRenderingContext2D,
+  mask: PolygonPoint[],
+  canvasW: number,
+  canvasH: number,
+  color: string,
+) {
+  if (mask.length < 3) return
+
+  // Build the polygon path
+  ctx.beginPath()
+  const first = mask[0]
+  ctx.moveTo((first.x / 100) * canvasW, (first.y / 100) * canvasH)
+  for (let i = 1; i < mask.length; i++) {
+    ctx.lineTo((mask[i].x / 100) * canvasW, (mask[i].y / 100) * canvasH)
+  }
+  ctx.closePath()
+
+  // Outer glow (drawn first, behind everything)
+  ctx.save()
+  ctx.shadowColor = color
+  ctx.shadowBlur = 20
+  ctx.strokeStyle = color + "60"
+  ctx.lineWidth = 3
+  ctx.stroke()
+  ctx.restore()
+
+  // Inner glow (tighter, brighter)
+  ctx.save()
+  ctx.shadowColor = color
+  ctx.shadowBlur = 8
+  ctx.strokeStyle = color + "90"
+  ctx.lineWidth = 1.5
+  ctx.stroke()
+  ctx.restore()
+
+  // Semi-transparent fill inside the silhouette
+  ctx.save()
+  ctx.fillStyle = color + "0a"
+  ctx.fill()
+  ctx.restore()
+}
+
 function drawZones(
   ctx: CanvasRenderingContext2D,
   zones: Zone[],
@@ -104,11 +146,15 @@ function drawDetections(
 
     const color = "#22d3ee"
 
-    // Corner brackets with glow
-    ctx.shadowColor = color
-    ctx.shadowBlur = 4
-    drawCornerBrackets(ctx, x, y, w, h, color)
-    ctx.shadowBlur = 0
+    // Draw segmentation mask glow if available, otherwise corner brackets
+    if (det.mask && det.mask.length >= 3) {
+      drawMaskGlow(ctx, det.mask, canvasW, canvasH, color)
+    } else {
+      ctx.shadowColor = color
+      ctx.shadowBlur = 4
+      drawCornerBrackets(ctx, x, y, w, h, color)
+      ctx.shadowBlur = 0
+    }
 
     // Label background
     const label = `${det.class_name} ${Math.round(det.confidence * 100)}%`
