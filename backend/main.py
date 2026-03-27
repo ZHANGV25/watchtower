@@ -4,6 +4,7 @@ import asyncio
 import base64
 import json
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 from typing import Any
@@ -155,11 +156,16 @@ async def _narrate_alert(alert: Alert, frame: np.ndarray) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(camera_loop())
+    task = None
+    if os.getenv("WATCHTOWER_NO_CAMERA") != "1":
+        task = asyncio.create_task(camera_loop())
+    else:
+        log.info("Camera disabled (WATCHTOWER_NO_CAMERA=1)")
     yield
     global camera_running
     camera_running = False
-    task.cancel()
+    if task:
+        task.cancel()
 
 
 # ---------------------------------------------------------------------------
@@ -331,6 +337,20 @@ async def _handle_get_replay_timestamps(ws: WebSocket, payload: dict[str, Any]) 
     ).model_dump_json())
 
 
+async def _handle_clear_alerts(ws: WebSocket, payload: dict[str, Any]) -> None:
+    global alerts
+    alerts = []
+    await broadcast(WSMessage(type="alerts_cleared", payload={}))
+
+
+async def _handle_clear_rules(ws: WebSocket, payload: dict[str, Any]) -> None:
+    global rules
+    rules = []
+    rule_engine._last_fired.clear()
+    rule_engine._duration_tracking.clear()
+    await broadcast(WSMessage(type="rules_cleared", payload={}))
+
+
 _message_handlers = {
     "add_rule": _handle_add_rule,
     "update_rule": _handle_update_rule,
@@ -340,4 +360,6 @@ _message_handlers = {
     "auto_zones": _handle_auto_zones,
     "get_replay": _handle_get_replay,
     "get_replay_timestamps": _handle_get_replay_timestamps,
+    "clear_alerts": _handle_clear_alerts,
+    "clear_rules": _handle_clear_rules,
 }

@@ -10,6 +10,8 @@ from models import Condition, Rule
 
 log = logging.getLogger("watchtower.rule_parser")
 
+_BEDROCK_MODEL = "us.anthropic.claude-sonnet-4-6"
+
 _SYSTEM_PROMPT = """You are a camera monitoring rule compiler for WatchTower, a real-time surveillance system.
 
 The user describes a monitoring rule in plain English. Translate it into a structured JSON rule.
@@ -64,8 +66,8 @@ Each condition: {{"type": "<condition_type>", "params": {{...}}}}
 
 class RuleParser:
     def __init__(self) -> None:
-        self._client = anthropic.AsyncAnthropic(
-            api_key=os.getenv("ANTHROPIC_API_KEY", ""),
+        self._client = anthropic.AsyncAnthropicBedrock(
+            aws_region=os.getenv("AWS_REGION", "us-east-1"),
         )
 
     async def parse(self, text: str, zone_names: list[str]) -> Rule | None:
@@ -73,9 +75,9 @@ class RuleParser:
 
         try:
             response = await self._client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model=_BEDROCK_MODEL,
                 max_tokens=1024,
-                system=_SYSTEM_PROMPT.format(zones=zones_str),
+                system=_SYSTEM_PROMPT.replace("{zones}", zones_str),
                 messages=[{"role": "user", "content": text}],
             )
 

@@ -23,6 +23,8 @@ interface WatchTowerEvents {
   zones_updated: { zones: Zone[] }
   replay: ReplayPayload
   replay_timestamps: ReplayTimestampsPayload
+  alerts_cleared: Record<string, never>
+  rules_cleared: Record<string, never>
   connected: undefined
   disconnected: undefined
 }

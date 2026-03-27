@@ -21,6 +21,7 @@ export default function Dashboard() {
     zones,
     rules,
     alerts,
+    lastAddedRule,
     fps,
     timestamp,
     addRule,
@@ -29,6 +30,8 @@ export default function Dashboard() {
     updateZones,
     autoGenerateZones,
     requestReplay,
+    clearAlerts,
+    clearRules,
   } = useWatchTower()
 
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null)
@@ -69,8 +72,9 @@ export default function Dashboard() {
               rules={rules}
               onToggle={toggleRule}
               onDelete={deleteRule}
+              onClearAll={clearRules}
             />
-            <RuleChat onAddRule={addRule} />
+            <RuleChat onAddRule={addRule} lastAddedRule={lastAddedRule} />
           </div>
         </div>
 
@@ -112,6 +116,7 @@ export default function Dashboard() {
           <AlertLog
             alerts={alerts}
             onSelectAlert={handleSelectAlert}
+            onClearAll={clearAlerts}
           />
         </div>
       </div>

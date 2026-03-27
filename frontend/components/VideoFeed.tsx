@@ -200,13 +200,19 @@ export function VideoFeed({ frame, detections, zones, fps, timestamp }: VideoFee
   return (
     <div className="relative w-full h-full bg-black flex items-center justify-center">
       {!frame && (
-        <div className="text-muted-foreground font-mono text-sm">
-          Waiting for camera feed...
+        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+          <div className="w-16 h-16 border border-muted-foreground/20 rounded-sm flex items-center justify-center">
+            <svg className="w-8 h-8 text-muted-foreground/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+            </svg>
+          </div>
+          <span className="font-mono text-[12px]">No camera feed</span>
+          <span className="font-mono text-[11px] text-muted-foreground/50">Rules, zones, and alerts still functional</span>
         </div>
       )}
       <canvas
         ref={canvasRef}
-        className="max-w-full max-h-full object-contain"
+        className={`max-w-full max-h-full object-contain ${!frame ? "hidden" : ""}`}
       />
     </div>
   )

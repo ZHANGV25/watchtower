@@ -13,6 +13,8 @@ from models import Zone
 
 log = logging.getLogger("watchtower.zone_generator")
 
+_BEDROCK_MODEL = "us.anthropic.claude-sonnet-4-6"
+
 _SYSTEM_PROMPT = """You are analyzing a camera frame to identify areas of interest for a safety monitoring system.
 
 Look at the image and identify distinct areas that would be relevant for monitoring rules. For example:
@@ -41,8 +43,8 @@ Do not create overlapping zones. Each zone should be a distinct area."""
 
 class ZoneGenerator:
     def __init__(self) -> None:
-        self._client = anthropic.AsyncAnthropic(
-            api_key=os.getenv("ANTHROPIC_API_KEY", ""),
+        self._client = anthropic.AsyncAnthropicBedrock(
+            aws_region=os.getenv("AWS_REGION", "us-east-1"),
         )
 
     async def generate(self, frame: np.ndarray) -> list[Zone]:
@@ -54,7 +56,7 @@ class ZoneGenerator:
 
         try:
             response = await self._client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model=_BEDROCK_MODEL,
                 max_tokens=1024,
                 system=_SYSTEM_PROMPT,
                 messages=[{

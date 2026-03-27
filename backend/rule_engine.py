@@ -95,21 +95,40 @@ class RuleEngine:
             if now - last < _COOLDOWN:
                 continue
 
-            all_met = True
             matched_detections: list[Detection] = []
 
-            for condition in rule.conditions:
+            # Separate duration from other conditions so duration tracking
+            # only resets when non-duration conditions fail.
+            non_duration = [c for c in rule.conditions if c.type != "duration"]
+            duration_conds = [c for c in rule.conditions if c.type == "duration"]
+
+            non_duration_met = True
+            for condition in non_duration:
                 met, matches = self._check_condition(
                     condition.type, condition.params, zones, detections, rule.id, now,
                 )
                 if not met:
-                    all_met = False
+                    non_duration_met = False
                     break
                 matched_detections.extend(matches)
 
-            if all_met and rule.conditions:
+            if not non_duration_met:
+                # Non-duration conditions failed: reset duration tracking
+                self._duration_tracking.pop(rule.id, None)
+                continue
+
+            # Non-duration conditions passed. Now check duration if any.
+            duration_met = True
+            for condition in duration_conds:
+                met, _ = self._check_condition(
+                    condition.type, condition.params, zones, detections, rule.id, now,
+                )
+                if not met:
+                    duration_met = False
+                    break
+
+            if duration_met and rule.conditions:
                 self._last_fired[rule.id] = now
-                # Clear duration tracking since it fired
                 self._duration_tracking.pop(rule.id, None)
 
                 fired.append(Alert(
@@ -119,9 +138,6 @@ class RuleEngine:
                     timestamp=now,
                     detections=matched_detections,
                 ))
-            elif not all_met:
-                # Reset duration tracking if conditions not met
-                self._duration_tracking.pop(rule.id, None)
 
         return fired
 

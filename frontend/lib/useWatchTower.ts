@@ -18,6 +18,7 @@ export interface WatchTowerState {
   zones: Zone[]
   rules: Rule[]
   alerts: Alert[]
+  lastAddedRule: Rule | null
   fps: number
   timestamp: number
 }
@@ -29,6 +30,7 @@ export function useWatchTower() {
   const [zones, setZones] = useState<Zone[]>([])
   const [rules, setRules] = useState<Rule[]>([])
   const [alerts, setAlerts] = useState<Alert[]>([])
+  const [lastAddedRule, setLastAddedRule] = useState<Rule | null>(null)
   const [fps, setFps] = useState(0)
   const [timestamp, setTimestamp] = useState(0)
   const connectedRef = useRef(false)
@@ -73,6 +75,7 @@ export function useWatchTower() {
       socket.on("rule_added", (data) => {
         const rule = data as unknown as Rule
         setRules((prev) => [...prev, rule])
+        setLastAddedRule(rule)
       }),
       socket.on("rule_updated", (data) => {
         const rule = data as unknown as Rule
@@ -87,6 +90,12 @@ export function useWatchTower() {
       socket.on("zones_updated", (data) => {
         const { zones: newZones } = data as { zones: Zone[] }
         setZones(newZones)
+      }),
+      socket.on("alerts_cleared", () => {
+        setAlerts([])
+      }),
+      socket.on("rules_cleared", () => {
+        setRules([])
       }),
     ]
 
@@ -120,6 +129,16 @@ export function useWatchTower() {
     socket.send("get_replay", { timestamp: ts, duration })
   }, [])
 
+  const clearAlerts = useCallback(() => {
+    setAlerts([])
+    socket.send("clear_alerts", {})
+  }, [])
+
+  const clearRules = useCallback(() => {
+    setRules([])
+    socket.send("clear_rules", {})
+  }, [])
+
   return {
     connected,
     frame,
@@ -127,6 +146,7 @@ export function useWatchTower() {
     zones,
     rules,
     alerts,
+    lastAddedRule,
     fps,
     timestamp,
     addRule,
@@ -135,5 +155,7 @@ export function useWatchTower() {
     updateZones,
     autoGenerateZones,
     requestReplay,
+    clearAlerts,
+    clearRules,
   }
 }

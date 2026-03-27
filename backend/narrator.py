@@ -12,6 +12,8 @@ from models import Alert
 
 log = logging.getLogger("watchtower.narrator")
 
+_BEDROCK_MODEL = "us.anthropic.claude-sonnet-4-6"
+
 _SYSTEM_PROMPT = """You are a safety monitoring assistant for WatchTower, a camera monitoring system.
 
 An alert has been triggered by a detection rule. Describe what you see in the camera frame in 1-2 sentences.
@@ -27,8 +29,8 @@ Be calm, factual, and concise. Do not speculate beyond what is visible. Do not b
 
 class Narrator:
     def __init__(self) -> None:
-        self._client = anthropic.AsyncAnthropic(
-            api_key=os.getenv("ANTHROPIC_API_KEY", ""),
+        self._client = anthropic.AsyncAnthropicBedrock(
+            aws_region=os.getenv("AWS_REGION", "us-east-1"),
         )
 
     async def narrate(self, frame: np.ndarray, alert: Alert) -> str:
@@ -46,7 +48,7 @@ class Narrator:
 
         try:
             response = await self._client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model=_BEDROCK_MODEL,
                 max_tokens=256,
                 system=_SYSTEM_PROMPT,
                 messages=[{
